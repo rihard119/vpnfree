@@ -1,0 +1,21 @@
+# List every VPN-trial bot you want the userbot to visit.
+# Adjust "steps" per bot based on how it actually behaves - some are
+# pure text commands, some use inline buttons, some need both.
+#
+# Step types:
+#   send_text    -> {"type": "send_text", "value": "/start"}
+#   wait         -> {"type": "wait", "seconds": 2}
+#   click_button -> {"type": "click_button", "text": "Get free trial"}
+
+targets:
+  - name: example_vpn_bot
+    username: "example_vpn_bot"          # without the leading @
+    steps:
+      - type: send_text
+        value: "/start"
+      - type: wait
+        seconds: 2
+      - type: click_button
+        text: "Get free trial"
+    response_timeout: 20                  # seconds to wait for a reply
+    delay_after: 10                       # seconds to wait before moving to next target

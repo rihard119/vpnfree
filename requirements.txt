@@ -1,0 +1,5 @@
+telethon>=1.36
+pyyaml>=6.0
+python-dotenv>=1.0
+opentele>=1.15  # only needed for the tdata -> Telethon session conversion
+PySocks>=1.7    # only needed if you set PROXY_HOST to use a SOCKS5 proxy
