@@ -1,29 +1,8 @@
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-env/
-
-# Environment / secrets
 .env
-
-# Telegram sessions - NEVER upload
 *.session
 *.session-journal
-
-# Database
+venv/
+venv311/
+__pycache__/
+*.pyc
 *.db
-*.sqlite
-*.sqlite3
-
-# Generated files
-vless_export.txt
-
-# IDE
-.vscode/
-.idea/
-
-# OS
-Thumbs.db
-.DS_Store
