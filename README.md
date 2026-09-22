@@ -1,148 +1,200 @@
-# VLESS Trial Collector
+# vpnfree
 
-Telegram userbot that runs named scenarios (`/bot-1`, `/bot-2`, ...)
-against VPN-trial bots defined in `targets.yaml`, extracts only
-`vless://` links seen during the whole scenario, dedupes them in
-SQLite, and reports progress/results through a separate control bot.
+Сбор VLESS-ссылок из Telegram через **userbot** + управляющий бот для команд.
 
-## Setup
+Структура проекта не менялась:
+`main.py`, `storage.py`, `parser.py`, `interaction.py`, `orchestrator.py`, `control_bot.py`, `targets.yaml`.
 
-1. `pip install -r requirements.txt`
-2. Copy `.env.example` to `.env` and fill in:
-   - `TG_API_ID` / `TG_API_HASH` from https://my.telegram.org/apps
-   - `TG_BOT_TOKEN` - create a bot via @BotFather (this is the control bot you talk to)
-   - `TG_ADMIN_ID` - your numeric Telegram user ID (e.g. via @userinfobot)
-   - Optional `PROXY_*` vars if the userbot needs to connect through a SOCKS5 proxy
-3. Edit `targets.yaml` - each key under `bots:` becomes a command
-   (`bot-1` -> `/bot-1`). See the file for the step format
-   (`send` / `wait` / `click` / `subscribe` / `extract`).
-4. Run: `python main.py`
-   - First run asks for your phone number and login code (this is your
-     real account - treat the `.session` file like a password).
-   - `targets.yaml` is validated at startup; problems are also reported
-     by the control bot before any scenario starts.
+> ⚠️ **Правила безопасности**
+> - Значения `API_ID` / `API_HASH` / `BOT_TOKEN` / `SESSION_STRING` — только в `.env`, никогда в коде.
+> - `.env`, `*.session`, `*.db` добавлены в `.gitignore` и **не должны** попадать в Git.
+> - Строку сессии userbot и токен бота нельзя показывать никому: кто знает их, получает полный доступ к вашему аккаунту.
+> - В логи и в чат не должны попадать VLESS-ссылки: они хранятся только в SQLite (`links.db`).
 
-## Using it
+---
 
-Message your control bot from your admin account:
+## Установка
 
-- `/bot-1`, `/bot-2`, ... - run the matching scenario from `targets.yaml`,
-  with live step-by-step progress and a found/saved summary at the end
-- `/list` - show every configured scenario command and its target username
-- `/links` - list all collected VLESS links
-- `/count` - how many are stored
-- `/export` - sends a `.txt` file of all links
-- `/status` - quick liveness check
-- `/help` - command overview
+```bash
+python -m venv venv311
+venv311\Scripts\activate        # Linux/macOS: source venv311/bin/activate
+pip install -r requirements.txt
+```
 
-Editing `targets.yaml` takes effect immediately - no restart needed,
-since it's re-read on every command. Commands that are **not** in
-`targets.yaml` never start anything (you just get a hint to use `/list`).
+## Настройка `.env`
 
-## Step actions (targets.yaml)
+```env
+API_ID=123456
+API_HASH=...
+BOT_TOKEN=...
+SESSION_STRING=...
+CONTROL_CHAT_ID=-100...
+```
+
+`CONTROL_CHAT_ID` — ID управляющего чата (например, «Избранное”). Узнать ID: перешлите сообщение боту `@userinfobot` или `@getidsbot`.
+
+## Запуск
+
+```bash
+python main.py
+```
+
+При старте `main.py` проверяет переменные окружения и валидирует `targets.yaml` — конфиг с ошибками будет отклонён сразу, а не посреди прогона.
+
+## Использование управляющего бота
+
+| Команда | Описание |
+|---|---|
+| `/start`, `/help` | Список команд |
+| `/bot-1` | Запуск сценария `bot-1` из `targets.yaml` |
+| `/status` | Статус текущих прогонов |
+| `/count` | Сколько ссылок в базе |
+| `/links [N]` | Показать последние N ссылок (по умолчанию 5) |
+| `/export` | Выгрузить базу в CSV |
+| `/list` | Доступные сценарии |
+
+Во время прогона бот присылает live-прогресс вида:
+
+```text
+[2/7] Waiting for button "Получить"
+Found: 5 | Saved: 3
+```
+
+Неизвестные команды ничего не запускают — бот отвечает подсказкой со списком доступных команд.
+
+---
+
+## `targets.yaml`
 
 ```yaml
+defaults:
+  timeout: 20          # таймаут click, сек
+  extract_window: 60   # окно extract, сек
+
 bots:
   bot-1:
-    username: example_vpn_bot
-    steps:
-      - action: send
-        text: "/start"
-      - action: wait
-        seconds: 2
-      - action: subscribe          # optional: join a channel first
-        chat: "@example_channel"
-        timeout: 20                # optional, default 20s
-      - action: wait
-        seconds: 2
-      - action: click
-        text: "Получить VPN"
-        timeout: 20        # optional, seconds to wait for the button to appear
-      - action: wait
-        seconds: 3
-      - action: extract     # scans every message seen so far for vless:// links
+    username: "@FreeVpnBot"
+    scenario:
+      - send: "получить vpn"
+      - click:
+          text: "Получить"        # подстрока, регистр не важен
+          timeout: 25             # опционально, переопределяет defaults
+      - extract: true
+
+  bot-2:
+    username: "@AnotherBot"
+    scenario:
+      - send: "/start"
+      - click: { text: "Start" }
+      - extract: true
+
+  # Сценарий с подпиской на канал/инвайт
+  bot-3:
+    username: "@InviteBot"
+    scenario:
+      - subscribe:
+          chat: "@vpn_news"        # или invite: "https://t.me/+hash"
+          timeout: 15
+      - send: "start"
+      - click: { text: "Start" }
+      - extract: true
 ```
 
-- `send` - sends a text message/command to the target bot
-- `wait` - sleeps for N seconds
-- `click` - waits (up to `timeout`, default 20s) for one of the target
-  bot's recent messages to contain an inline button whose visible text
-  **contains** the configured string, case-insensitively
-  (`"Получить"` matches `Получить VPN`, `Получить конфиг`, `получить КЛЮЧ`),
-  then clicks exactly that button. Buttons of other bots are never clicked.
-  If no matching button appears within the timeout, the scenario fails
-  with a `ScenarioStepError` naming the step and the button.
-- `subscribe` - joins `chat:` (public `@username`) or `invite:` (private
-  `https://t.me/+hash` link) **with the userbot account**, but only when the
-  userbot is not already a member; membership is verified afterwards.
-  The control bot prints e.g. `[3/7] Subscribing to @vpn_news` followed by
-  `[3/7] Already subscribed` or `[3/7] Successfully subscribed`.
-  Whole action is bounded by `timeout` (default 20s). FloodWait, expired
-  invites, approval-required channels, etc. stop the scenario with a clear
-  reason - nothing is ever retried in a loop and no access control is
-  bypassed. Only chats explicitly listed in `targets.yaml` are joined.
-- `extract` - searches **every** message received from the target bot
-  during this scenario run (not just the latest one, and nothing from
-  other chats) for `vless://` links, dedupes them within the run and
-  saves them via `storage.save_link()`. The final report shows
-  `Found:` (unique links in this run) and `Saved:` (links that were new
-  in the database).
+### Действия сценария
 
-If any step fails (button not found, timeout, Telegram error, etc.),
-the control bot reports exactly which step and why, e.g.:
+| Действие | Описание |
+|---|---|
+| `send` | Отправить текст в чат целевого бота (userbot-клиент). |
+| `click` | Ждать inline-кнопку с подстрокой `text` (регистр не важен) до `timeout` (по умолчанию 20 c), нажать только кнопку целевого бота. Таймаут → ошибка с понятной причиной. |
+| `extract` | Сканировать **все** сообщения от целевого бота в чате, сохранить новые VLESS-ссылки. |
+| `subscribe` | Вступить в `chat` (`@channel`) или по `invite` (`https://t.me/+hash`) от имени userbot. Уже подписан → пропуск с пометкой. Проверка членства после входа. |
 
-```
-bot-1 failed.
+После `extract` в `Found:` попадают уникальные ссылки прогона, в `Saved:` — реально новые для `links.db`.
 
-Step: 3/7
-Action: click
-Button: "Получить VPN"
-Reason: button matching 'Получить VPN' not found within 20s
-```
+### Валидация конфига
 
-Config errors are caught **before** the scenario starts:
+Ошибки конфигурации понятны и указывают шаг:
 
-```
-Config error:
+```text
 bot-1: step 3: action 'click' requires field 'text'
+bot-2: action 'subscribe' requires 'chat' or 'invite'
+bot-5: unknown action 'clik' in step 2 (valid: send, click, extract, subscribe)
 ```
 
-## Concurrency
+Конфиг проверяется при старте и непосредственно перед запуском сценария.
 
-- Different `bot_id`s may run at the same time (each run has its own
-  message handler, filtered to its own target chat).
-- The **same** `bot_id` cannot be started a second time while its previous
-  run is still executing - you get `"... is already running"` instead.
-- Message handlers are always removed when a scenario ends - on success,
-  on error and on cancellation.
+### Параллелизм
 
-## Failure handling
+- Один и тот же `bot_id` **не запускается дважды** параллельно: повторная команда мгновенно отвечает `Scenario bot-1 is already running`.
+- Разные `bot_id` бегут **параллельно**, без перекрёстных обработчиков.
 
-No scenario failure can take down the control bot. Handled explicitly:
-Telegram API/RPC errors (incl. FloodWait), timeouts, missing target bot,
-impossible sends, missing buttons, malformed YAML, missing/invalid
-required fields, and arbitrary unexpected exceptions. Tracebacks go only
-to the server-side log; replies in the control chat are short and have
-filesystem paths / token-like strings redacted.
+---
 
-## Notes / limitations
+## Локальные проверки
 
-- Trial bots are generally meant for one claim per person - keep the
-  target list modest and avoid running scenarios aggressively against
-  the same bots repeatedly, since that's likely to violate their terms.
-- A `click` step matches the **first** button (newest message first,
-  up to 10 messages back) whose visible text contains the given string.
-  If a bot reuses similar button text across different menus, make the
-  match string more specific.
-- If a bot sends its VLESS link as a *button* rather than message text
-  (deep link, WebApp button, etc.), `extract` won't see it - only
-  plain message text is scanned.
-- `subscribe` requires the chat to be joinable by a normal user (public
-  username, or a valid invite link). Chats needing manual approval stop
-  the scenario with a clear error instead of trying to bypass it.
-- The userbot session is your real Telegram account. Keep the VPS/PC
-  it runs on secured, and keep `.env` and `.session` files out of
-  version control (`.gitignore` already covers `.env`, `*.session`,
-  `*.db`; if `venv311/` was ever committed, untrack it once with
-  `git rm -r --cached venv311`).
-- No secrets live in the Python code - everything comes from `.env`.
+Тесты вынесены за пределы репозитория (`%TEMP%\opencode\vpnfree_tests`), поэтому структура проекта не менялась:
+
+```bash
+venv311\Scripts\python  <temp>\vpnfree_tests\test_core.py         # 32 теста
+venv311\Scripts\python  <temp>\vpnfree_tests\test_control_bot.py  # 15 тестов
+venv311\Scripts\python  <temp>\vpnfree_tests\test_e2e.py          # e2e /bot-1
+```
+
+**49 тестов проходят.**
+
+Также проверено:
+
+- `git check-ignore .env links.db x.session` → игнорируются;
+- в `*.py` нет `API_HASH` / `BOT_TOKEN` / `SESSION_STRING`;
+- `storage.py` и `parser.py` не изменены;
+- `py_compile` по всем файлам проекта чистый;
+- реальный `targets.yaml` проходит валидацию.
+
+### Что нельзя проверить без Telegram
+
+1. Реальный MTProto-логин userbot и вход по `SESSION_STRING`.
+2. Живое нажатие кнопки в конкретном боте (формат кнопок, callback-ответы).
+3. Фактическую доставку сообщений бота в ваш чат.
+4. Вступление в канал/инвайт и обработку `FloodWait` на стороне Telegram.
+5. Что целевой бот отвечает на `send` в вашем аккаунте.
+
+Рекомендуется начать с **read-only прогона**: `/bot-1` на боте, который шлёт ссылку без подписки, и убедиться, что `Found:`/`Saved:` сходятся, а `links.db` пополняется.
+
+---
+
+## Ручной запуск сценария (без бота)
+
+```python
+import asyncio
+from orchestrator import load_config, run_scenario
+from interaction import ScenarioRunner
+from main import make_client
+from storage import init_db, save_link
+
+async def go():
+    cfg = load_config("targets.yaml")
+    init_db()
+    client = make_client()
+    async with client:
+        res = await run_scenario(
+            ScenarioRunner(client, cfg["bots"]["bot-1"], cfg.get("defaults") or {}),
+            "bot-1", on_progress=lambda s: print("  ", s),
+        )
+    for link in res.links:
+        save_link(link)
+
+asyncio.run(go())
+```
+
+---
+
+## Известные замечания
+
+1. **`venv311/` закоммичен в Git** (~3595 файлов, бинарники и `.exe`). В `.gitignore` его нет. Рекомендуется очистить индекс (файлы на диске останутся):
+   ```bash
+   git rm -r --cached venv311
+   git add .gitignore
+   git commit -m "chore: untrack venv"
+   ```
+2. **`tools/convert_tdata.py`** печатает `api_hash` в консоль (`print("api_hash:", ...)`). Перед публикацией репозитория уберите этот вывод или удалите файл.
+3. Click после нажатия ждёт пост-клик ответа best-effort: ответ бота **всё равно буферизуется** и будет пойман `extract`-ом, поэтому отсутствие видимой реакции не валит шаг; таймаут валит только ожидание кнопки.
