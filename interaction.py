@@ -1,5 +1,5 @@
 """Executes a target bot's step list from targets.yaml (the "bots:"
-format) and returns every VLESS link found during the whole run.
+format) and returns every VPN link found during the whole run.
 
 Supported step actions - all configured in targets.yaml, no code changes:
   - send:      {"action": "send", "text": "/start"}
@@ -34,7 +34,7 @@ from typing import Optional
 from telethon import TelegramClient, errors as tg_errors, events, utils
 from telethon.tl import functions, types
 
-from parser import extract_vless_links
+from parser import extract_links
 
 log = logging.getLogger("interaction")
 
@@ -100,7 +100,7 @@ class ScenarioRunner:
 
     async def run(self, username: str, steps: list, progress_cb=None) -> list[str]:
         """Runs the full step list against `username`. Returns the
-        deduped list of vless:// links found via any `extract` steps.
+        deduped list of VPN links found via any `extract` steps.
         Raises ScenarioStepError on the first failing step.
 
         progress_cb, if given, is called as
@@ -162,7 +162,7 @@ class ScenarioRunner:
                         await self._subscribe(step, notify)
 
                     elif action == "extract":
-                        for link in extract_vless_links("\n".join(state.messages)):
+                        for link in extract_links("\n".join(state.messages)):
                             if link not in seen:
                                 seen.add(link)
                                 collected_links.append(link)

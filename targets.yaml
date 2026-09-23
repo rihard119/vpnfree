@@ -28,35 +28,57 @@
 
 bots:
   bot-1:
-    username: example_vpn_bot
+    username: VoxiProxy_bot
     steps:
       - action: send
         text: "/start"
       - action: wait
         seconds: 2
+      - action: subscribe
+        chat: "@voxiproxynews"
+        timeout: 20
       - action: click
-        text: "Получить VPN"
+        text: "Я подписался"
+        timeout: 20
+      - action: click
+        text: "Пропустить"
         timeout: 20
       - action: wait
         seconds: 3
       - action: click
-        text: "VLESS"
+        text: "Получить пробный период"
+        timeout: 20
+      - action: click
+        text: "Активировать"
         timeout: 20
       - action: wait
         seconds: 3
       - action: extract
 
   bot-2:
-    username: another_vpn_bot
-    steps:
+    username: veltrovpn_bot
+    steps: 
       - action: send
         text: "/start"
       - action: wait
         seconds: 2
+      - action: subscribe
+        chat: "@veltrovpn_channel"
+        timeout: 20
       - action: click
-        text: "Получить ключ"
+        text: "Подписался"
       - action: wait
-        seconds: 5
+        seconds: 20
+      - action: click
+        text: "Пропустить"
+      - action: wait
+        seconds: 20
+      - action: click
+        text: "Тестовая"
+      - action: wait
+        seconds: 20
+      - action: click
+        text: "Активировать"
       - action: extract
 
   # Bot that first requires a subscription to a channel:

@@ -1,6 +1,6 @@
 # vpnfree
 
-Сбор VLESS-ссылок из Telegram через **userbot** + управляющий бот для команд.
+Сбор VPN-ссылок (VLESS и subscription URL) из Telegram через **userbot** + управляющий бот для команд.
 
 Структура проекта не менялась:
 `main.py`, `storage.py`, `parser.py`, `interaction.py`, `orchestrator.py`, `control_bot.py`, `targets.yaml`.
@@ -9,7 +9,7 @@
 > - Значения `API_ID` / `API_HASH` / `BOT_TOKEN` / `SESSION_STRING` — только в `.env`, никогда в коде.
 > - `.env`, `*.session`, `*.db` добавлены в `.gitignore` и **не должны** попадать в Git.
 > - Строку сессии userbot и токен бота нельзя показывать никому: кто знает их, получает полный доступ к вашему аккаунту.
-> - В логи и в чат не должны попадать VLESS-ссылки: они хранятся только в SQLite (`links.db`).
+> - В логи и в чат не должны попадать VPN-ссылки: они хранятся только в SQLite (`links.db`).
 
 ---
 
@@ -106,10 +106,12 @@ bots:
 |---|---|
 | `send` | Отправить текст в чат целевого бота (userbot-клиент). |
 | `click` | Ждать inline-кнопку с подстрокой `text` (регистр не важен) до `timeout` (по умолчанию 20 c), нажать только кнопку целевого бота. Таймаут → ошибка с понятной причиной. |
-| `extract` | Сканировать **все** сообщения от целевого бота в чате, сохранить новые VLESS-ссылки. |
+| `extract` | Сканировать **все** сообщения от целевого бота в чате, извлекать VLESS-ссылки и subscription URL и сохранять новые найденные ссылки. |
 | `subscribe` | Вступить в `chat` (`@channel`) или по `invite` (`https://t.me/+hash`) от имени userbot. Уже подписан → пропуск с пометкой. Проверка членства после входа. |
 
 После `extract` в `Found:` попадают уникальные ссылки прогона, в `Saved:` — реально новые для `links.db`.
+
+Subscription URL распознаётся, только если в path есть отдельный сегмент `sub`. Домен не ограничен: подходят ссылки вида `/sub`, `/sub/...`, `/api/sub/...` и `/path/sub?...`. Обычные HTTP(S)-ссылки, а также пути `/submit` и `/subscribe` игнорируются. Query string сохраняется полностью; содержимое subscription URL не скачивается. VLESS и subscription URL хранятся в одной таблице `links`, где дедупликация обеспечивается ограничением `UNIQUE`.
 
 ### Валидация конфига
 
@@ -132,22 +134,28 @@ bot-5: unknown action 'clik' in step 2 (valid: send, click, extract, subscribe)
 
 ## Локальные проверки
 
-Тесты вынесены за пределы репозитория (`%TEMP%\opencode\vpnfree_tests`), поэтому структура проекта не менялась:
+Тесты парсера, `extract` и совместимости с SQLite находятся в репозитории:
 
 ```bash
-venv311\Scripts\python  <temp>\vpnfree_tests\test_core.py         # 32 теста
-venv311\Scripts\python  <temp>\vpnfree_tests\test_control_bot.py  # 15 тестов
-venv311\Scripts\python  <temp>\vpnfree_tests\test_e2e.py          # e2e /bot-1
+venv311\Scripts\python.exe -m unittest discover -s tests -v  # 16 тестов
 ```
 
-**49 тестов проходят.**
+Они проверяют VLESS, subscription URL любого домена, точный path-сегмент `sub`, query string, Markdown, пунктуацию, дедупликацию, несколько сообщений сценария и существующее ограничение `UNIQUE` в SQLite.
+
+Расширенный офлайн-набор можно запускать из `%TEMP%\opencode\vpnfree_tests`:
+
+```bash
+venv311\Scripts\python.exe  <temp>\vpnfree_tests\test_core.py         # 32 теста
+venv311\Scripts\python.exe  <temp>\vpnfree_tests\test_control_bot.py  # 15 тестов
+venv311\Scripts\python.exe  <temp>\vpnfree_tests\test_e2e.py          # e2e /bot-1
+```
 
 Также проверено:
 
 - `git check-ignore .env links.db x.session` → игнорируются;
 - в `*.py` нет `API_HASH` / `BOT_TOKEN` / `SESSION_STRING`;
-- `storage.py` и `parser.py` не изменены;
-- `py_compile` по всем файлам проекта чистый;
+- `storage.py` не изменён, существующая таблица `links` принимает оба типа ссылок;
+- `py_compile` по изменённым файлам проекта чистый;
 - реальный `targets.yaml` проходит валидацию.
 
 ### Что нельзя проверить без Telegram
